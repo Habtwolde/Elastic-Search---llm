@@ -1,0 +1,67 @@
+name: oracle-elser
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    container_name: es01
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=true
+      - ingest.geoip.downloader.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    networks:
+      default:
+        aliases:
+          - elasticsearch
+
+  ls01:
+    build:
+      context: ./logstash
+    container_name: ls01
+    depends_on:
+      es01:
+        condition: service_healthy
+      es_setup:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=changeme
+      - ES_URL=http://elasticsearch:9200
+      - http.host=0.0.0.0
+    ports:
+      - "9600:9600"
+
+  es_setup:
+    image: curlimages/curl:8.10.1
+    container_name: es_setup
+    depends_on:
+      es01:
+        condition: service_healthy
+    volumes:
+      - ./elastic/elser_pipeline.json:/work/elser_pipeline.json:ro
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >
+      echo "Waiting for Elasticsearch..." &&
+      until curl -s http://es01:9200 >/dev/null; do sleep 2; done &&
+      echo "Elasticsearch is up." &&
+      echo "Attempting to download model .elser_model_2_linux-x86_64 ..." &&
+      curl -s -X POST "http://es01:9200/_ml/trained_models/.elser_model_2_linux-x86_64/_download" >/dev/null || true &&
+      echo "Creating ingest pipeline elser_oracle_pipeline..." &&
+      curl -s -X PUT "http://es01:9200/_ingest/pipeline/elser_oracle_pipeline"
+      -H "Content-Type: application/json"
+      --data-binary @/work/elser_pipeline.json >/dev/null &&
+      echo "Done."
+    restart: "no"
+
+networks:
+  default:
+    name: oracle-elser_default

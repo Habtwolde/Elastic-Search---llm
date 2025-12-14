@@ -1,0 +1,16 @@
+{
+  "mappings": {
+    "properties": {
+      "id":         { "type": "keyword" },
+      "title":      { "type": "text" },
+      "body":       { "type": "text" },
+      "content":    { "type": "text" },
+      "updated_at": { "type": "date" },
+      "ml": {
+        "properties": {
+          "tokens": { "type": "rank_features" }
+        }
+      }
+    }
+  }
+}
